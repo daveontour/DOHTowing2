@@ -102,7 +102,7 @@ public class TowContextListenerBase implements ServletContextListener {
 		refreshPeriod = Integer.parseInt(props.getProperty("refresh.period", "86400000"));
 		
 		
-		this.ams = new AMSServices(token, airport, wsurl);
+		this.ams = new AMSServices(token, wsurl);
 		
 		// Set the configured logging level
 		this.setLogLevel();
