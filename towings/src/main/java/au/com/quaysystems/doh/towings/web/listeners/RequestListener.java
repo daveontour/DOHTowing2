@@ -268,14 +268,24 @@ public class RequestListener extends TowContextListenerBase {
 						String message = null;
 						try {
 							message = recv.mGet(msgRecvTimeout, true);
+							try {
+								recv.disconnect();
+							} catch (Exception e) {
+								log.error("Recieve Disconnect Error - probably not fatal");
+							}
 						} catch (MQException ex) {
 							if ( ex.completionCode == 2 && ex.reasonCode == MQConstants.MQRC_NO_MSG_AVAILABLE) {
-								log.trace("No Request Messages");
+								log.debug("No Request Messages");
 								continue;
 							}
 						}
-						log.trace("Request Message Received");
-						message = message.substring(message.indexOf("<"));
+						log.debug("Request Message Received");
+						try {
+							message = message.substring(message.indexOf("<"));
+						} catch (Exception e1) {
+							log.info("Badly formatted request received");
+							System.out.println(message);
+						}
 
 						Pattern p = Pattern.compile("CorrelationID>([a-zA-Z0-9]*)<");
 						Matcher m = p.matcher(message);
@@ -316,15 +326,25 @@ public class RequestListener extends TowContextListenerBase {
 						try {
 							MSender send = new MSender(ibmoutqueue, host, qm, channel,  port,  user,  pass);
 							send.mqPut(msg);
-							log.trace("Request Response Sent");
+							log.debug("Request Response Sent");
+							continueOK = false;
+
+							try {
+								send.disconnect();
+							} catch (Exception e) {
+								log.error("Send Disconnect Error - probably not fatal");
+								continueOK = false;
+							}
+
 						} catch (Exception e) {
 							log.error("Request Response Send Error");
 							log.error(e.getMessage());
+							continueOK = false;
 						}
 					} catch (Exception e) {
 						log.error("Unhandled Exception "+e.getMessage());
 						e.printStackTrace();
-						recv.disconnect();
+						//						recv.disconnect();
 						continueOK = false;
 					}
 				} while (continueOK);

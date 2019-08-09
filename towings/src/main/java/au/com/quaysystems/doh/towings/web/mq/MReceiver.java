@@ -14,6 +14,7 @@ public class MReceiver extends MBase{
 	private MQMessage theMessage;
 	private String content;
 	public String queueName;
+	private int openOptions;
 
 	public MReceiver(String q, String host, String qm, String channel, int port, String user, String pass) throws MQException {
 
@@ -39,10 +40,9 @@ public class MReceiver extends MBase{
 
 		queueName = q;
 		qMgr = new MQQueueManager(qm);
-		int openOptions =  MQConstants.MQOO_INQUIRE | MQConstants.MQOO_INPUT_AS_Q_DEF;
-		queue = qMgr.accessQueue(q, openOptions, null, null, null);
-
-
+		openOptions = MQConstants.MQOO_INQUIRE | MQConstants.MQOO_INPUT_AS_Q_DEF;
+		queue = qMgr.accessQueue(queueName, openOptions, null, null, null);
+		this.disconected = false;
 	}
 
 
@@ -68,8 +68,14 @@ public class MReceiver extends MBase{
 
 
 	public String mGet(int waitTime, boolean failOnTimeout) throws MQException{
-
+		
 		try {
+			
+			if (this.disconected) {
+				openOptions = MQConstants.MQOO_INQUIRE | MQConstants.MQOO_INPUT_AS_Q_DEF;
+				queue = qMgr.accessQueue(queueName, openOptions, null, null, null);
+				this.disconected = false;
+			}
 
 			theMessage = new MQMessage();
 			MQGetMessageOptions gmo = new MQGetMessageOptions();

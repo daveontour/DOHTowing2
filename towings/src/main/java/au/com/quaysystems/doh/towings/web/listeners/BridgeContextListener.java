@@ -36,32 +36,32 @@ public class BridgeContextListener extends TowContextListenerBase {
 			"	%s\r\n" + 
 			"  </soap:Body>\r\n" + 
 			" </soap:Envelope>";
-	
+
 	// Used by BaseX to extract the portion of the message we are interested in
 	String queryBody = 
 			"declare variable $var1 as xs:string external;\n"+
-			"for $x in fn:parse-xml($var1)//Notification\r\n" + 
-			"return $x";
-	
+					"for $x in fn:parse-xml($var1)//Notification\r\n" + 
+					"return $x";
+
 	@Override
 	public void contextInitialized(ServletContextEvent servletContextEvent) {
 		log = (Logger)LoggerFactory.getLogger(BridgeContextListener.class);
 		super.contextInitialized(servletContextEvent);
-		
+
 		// Start the listener for incoming notification
 		this.startListener();
 	}
-	
+
 	public void startListener() {
-		
+
 		log.info("---> Starting Notification Listener");
 		t = new NotifcationBridgeListener();
 		t.setName("Notif. Process");
 		t.start();
 		log.info("<--- Started Notification Listener");
-		
+
 	}
-	
+
 	public class NotifcationBridgeListener extends Thread {
 
 		public void run() {
@@ -76,19 +76,35 @@ public class BridgeContextListener extends TowContextListenerBase {
 				log.info(String.format("Conected to queue %s", msmqbridge));
 
 				boolean continueOK = true;
-				
+
 				do {
 					try {
 						String message = null;
 						try {
 							message = recv.mGet(msgRecvTimeout, true);
+							try {
+								recv.disconnect();
+							} catch (Exception e) {
+								log.error("Recieve Disconnect Error - probably not fatal");
+							}
 						} catch (MQException ex) {
 							if ( ex.completionCode == 2 && ex.reasonCode == MQConstants.MQRC_NO_MSG_AVAILABLE) {
-								log.trace("No Notification Messages");
+								log.debug("No Notification Messages");
 								continue;
 							}
+						} 
+
+						if (!message.contains("TowingCreatedNotification") &&
+								!message.contains("TowingUpdatedNotification") &&
+								!message.contains("TowingDeletedNotification")) {
+
+							// Exit the loop if it's not a message we are interested in
+							log.debug("Unhandled message received - ignoring");
+							continueOK = false;
+							continue;
 						}
-						log.trace("Message Received");
+
+						log.debug("Message Received");
 						message = message.substring(message.indexOf("<")).replace("xsi:type", "type");
 						String notification = "<Error>true</Error>";
 						Context context = new Context();
@@ -106,23 +122,23 @@ public class BridgeContextListener extends TowContextListenerBase {
 
 						notification = String.format(notifTemplate, notification);
 						notification = notification.replace("xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\"", "");
-						
+
 						// Get the registration of the flight by extracting flight details and calling a web service to get the flight 
 						String rego = "<Registration>"+getRegistration(notification)+"</Registration>";
 						notification = notification.replaceAll("</FlightIdentifier>", rego+"\n</FlightIdentifier>");						
-						log.trace("Message Processed");
+						log.debug("Message Processed");
 
 						try {
 							MSender send = new MSender(ibmoutqueue, host, qm, channel,  port,  user,  pass);
 							send.mqPut(notification);
-							log.trace("Message Sent");
+							log.debug("Message Sent");
 						} catch (Exception e) {
 							log.error("Message Send Error");
 							log.error(e.getMessage());
 						}
 					} catch (Exception e) {
 						log.error("Unhandled Exception "+e.getMessage());
-						recv.disconnect();
+						//						recv.disconnect();
 						continueOK = false;
 					}
 				} while (continueOK);

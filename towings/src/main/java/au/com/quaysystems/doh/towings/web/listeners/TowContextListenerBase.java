@@ -1,5 +1,7 @@
 package au.com.quaysystems.doh.towings.web.listeners;
 
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
@@ -55,7 +57,7 @@ public class TowContextListenerBase implements ServletContextListener {
 	
 	protected boolean enablePush;
 	protected boolean syncOnStartUp;
-
+	
 	protected Properties props;
 
 	@Override
@@ -94,7 +96,7 @@ public class TowContextListenerBase implements ServletContextListener {
 		
 		airport = props.getProperty("airport");
 		wsurl = props.getProperty("ws.url");
-		
+
 		deleteBeforeSync = Boolean.parseBoolean(props.getProperty("deleteBeforeSync", "false"));
 		enablePush = Boolean.parseBoolean(props.getProperty("enablePush", "false"));
 		syncOnStartUp = Boolean.parseBoolean(props.getProperty("syncOnStartUp", "true"));
@@ -124,7 +126,13 @@ public class TowContextListenerBase implements ServletContextListener {
 			if (inputStream != null) {
 				props.load(inputStream);
 			} else {
-				throw new FileNotFoundException("property file '" + propFileName + "' not found in the classpath");
+				try {
+					File initialFile = new File("C:/Users/dave_/Desktop/application.properties");
+					inputStream = new FileInputStream(initialFile);
+					props.load(inputStream);
+				} catch (Exception e) {
+					throw new FileNotFoundException("property file '" + propFileName + "' not found in the classpath");
+				}
 			}
  
  		} catch (Exception e) {
