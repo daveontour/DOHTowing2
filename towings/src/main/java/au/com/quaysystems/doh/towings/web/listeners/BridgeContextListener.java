@@ -1,9 +1,21 @@
 package au.com.quaysystems.doh.towings.web.listeners;
 
+import java.io.IOException;
+import java.util.HashMap;
+
 import javax.servlet.ServletContextEvent;
 import javax.servlet.annotation.WebListener;
 
+import org.apache.http.HttpResponse;
+import org.apache.http.HttpStatus;
+import org.apache.http.client.ClientProtocolException;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.HttpUriRequest;
+import org.apache.http.client.methods.RequestBuilder;
+import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.http.util.EntityUtils;
 import org.basex.core.Context;
+import org.basex.data.Result;
 import org.basex.query.QueryProcessor;
 import org.basex.query.iter.Iter;
 import org.basex.query.value.item.Item;
@@ -42,6 +54,16 @@ public class BridgeContextListener extends TowContextListenerBase {
 			"declare variable $var1 as xs:string external;\n"+
 					"for $x in fn:parse-xml($var1)//Notification\r\n" + 
 					"return $x";
+
+	String notificationDummy = "<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">\r\n" + 
+			" <soap:Header></soap:Header>\r\n" + 
+			" <soap:Body>\r\n" + 
+			"  <Notification  type=\"TowingUpdatedNotification\">\r\n" + 
+			"   <Airport>DOH</Airport>\r\n" + 
+			"   %s \r\n"+
+			"  </Notification>\r\n" + 
+			" </soap:Body>\r\n" + 
+			"</soap:Envelope>";
 
 	@Override
 	public void contextInitialized(ServletContextEvent servletContextEvent) {
@@ -94,6 +116,12 @@ public class BridgeContextListener extends TowContextListenerBase {
 							}
 						} 
 
+						if (message.contains("<FlightUpdatedNotification>")) {
+							handleFlightUpdate(message);
+							continueOK = false;
+							continue;
+						}
+
 						if (!message.contains("TowingCreatedNotification") &&
 								!message.contains("TowingUpdatedNotification") &&
 								!message.contains("TowingDeletedNotification")) {
@@ -145,4 +173,169 @@ public class BridgeContextListener extends TowContextListenerBase {
 			} while (true);
 		}
 	}
+
+	private String stripNS(String xml) {
+		return xml.replaceAll("xmlns(.*?)=(\".*?\")", "");
+	}
+
+	public void handleFlightUpdate(String message) {
+		String queryBody = 
+				"declare variable $var1 as xs:string external;\n"+
+						"for $x in fn:parse-xml($var1)//AircraftChange/NewValue/Aircraft/AircraftId/Registration/text()\r\n" + 
+						"return $x";
+		message = stripNS(message);
+		Context context = new Context();
+		String rego = null;
+		try  {
+			QueryProcessor proc = new QueryProcessor(queryBody, context);
+			proc.bind("var1", message);
+			Result result = proc.execute();
+			rego = result.serialize().toString();
+			proc.close();
+		} catch (Exception ex) {
+			ex.printStackTrace();
+		}
+		
+		
+		// Does the notification have a new aircraft registration
+		if (rego == null || rego.length() < 2) {
+			return;
+		}	
+
+		System.out.println("===== Rego: "+rego+"  ======");
+		System.out.println(message);
+
+		
+		//It does, so construct the flight descriptor
+		String fltDescriptor = getFlightDescriptor(message);
+		if (fltDescriptor == null) {
+			return;
+		}
+
+		try {
+			// Get all the towing events for this fligt descriptor
+			String tows = this.getTow(fltDescriptor);
+			System.out.println(tows);
+
+			// Get all the towing events for this fligt descriptor
+			String queryTowing = 
+					"declare variable $var1 as xs:string external;\n"+
+							"for $x in fn:parse-xml($var1)//Towing\r\n" + 
+							"return $x";
+
+			try  {
+				QueryProcessor proc = new QueryProcessor(queryTowing, context);
+				proc.bind("var1", tows);
+				Iter iter = proc.iter();
+				for (Item item; (item = iter.next()) != null;) {
+
+					// For each towing event, make it look like a TowingNotification message
+					// and put it on the Bridge Queue, so the message is picked up and processed
+					// as a normal notification message.
+					String tow = item.serialize().toString();
+					String msg = String.format(notificationDummy, tow);
+					System.out.println(msg);
+					try {
+						MSender send = new MSender(msmqbridge, host, qm, channel,  port,  user,  pass);
+						send.mqPut(msg);
+						send.disconnect();
+						log.info("Constructed TowNOtification Message Sent");
+					} catch (Exception e) {
+						log.error("Sync Send Error");
+						log.error(e.getMessage());
+					}
+
+				}
+				proc.close();
+			} catch (Exception ex) {
+				ex.printStackTrace();
+			}	
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+
+	public String getFlightDescriptor(String message) {
+
+		String desc = null;
+		String kind = null;
+		String airline = null;
+		String fltNum = null;
+		String sched = null;
+
+		message = stripNS(message);
+		Context context = new Context();
+
+		String queryBody = 
+				"declare variable $var1 as xs:string external;\n"+
+						"for $x in fn:parse-xml($var1)//FlightUpdatedNotification/Flight/FlightId/FlightKind/text()\r\n" + 
+						"return $x";
+
+		try  {
+			QueryProcessor proc = new QueryProcessor(queryBody, context);
+			proc.bind("var1", message);
+			Result result = proc.execute();
+			kind = result.serialize().toString();
+			proc.close();
+		} catch (Exception ex) {
+			return desc;
+		}
+
+		queryBody = 
+				"declare variable $var1 as xs:string external;\n"+
+						"for $x in fn:parse-xml($var1)//FlightUpdatedNotification/Flight/FlightId/FlightNumber/text()\r\n" + 
+						"return $x";
+
+		try  {
+			QueryProcessor proc = new QueryProcessor(queryBody, context);
+			proc.bind("var1", message);
+			Result result = proc.execute();
+			fltNum = result.serialize().toString();
+			proc.close();
+		} catch (Exception ex) {
+			return desc;
+		}
+
+		queryBody = 
+				"declare variable $var1 as xs:string external;\n"+
+						"for $x in fn:parse-xml($var1)//FlightUpdatedNotification/Flight/FlightState/ScheduledTime/text()\r\n" + 
+						"return $x";
+
+		try  {
+			QueryProcessor proc = new QueryProcessor(queryBody, context);
+			proc.bind("var1", message);
+			Result result = proc.execute();
+			sched = result.serialize().toString();
+			proc.close();
+		} catch (Exception ex) {
+			return desc;
+		}
+
+		queryBody = 
+				"declare variable $var1 as xs:string external;\n"+
+						"for $x in fn:parse-xml($var1)//FlightUpdatedNotification/Flight/FlightId/AirlineDesignator[@codeContext=\"IATA\"]/text()\r\n" + 
+						"return $x";
+
+		try  {
+			QueryProcessor proc = new QueryProcessor(queryBody, context);
+			proc.bind("var1", message);
+			Result result = proc.execute();
+			airline = result.serialize().toString();
+			proc.close();
+		} catch (Exception ex) {
+			return desc;
+		}
+
+		//		String id = "6E1713@2019-08-01T09:00A";
+		if (kind.contains("Arrival")) {
+			desc = airline+fltNum+"@"+sched+"A";
+		} else {
+			desc = airline+fltNum+"@"+sched+"D";	
+		}
+
+		return desc;
+
+	}
+
+
 }

@@ -12,6 +12,19 @@ import java.util.regex.Pattern;
 import javax.servlet.ServletContextEvent;
 import javax.servlet.ServletContextListener;
 
+import org.apache.http.HttpResponse;
+import org.apache.http.HttpStatus;
+import org.apache.http.client.ClientProtocolException;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.HttpUriRequest;
+import org.apache.http.client.methods.RequestBuilder;
+import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.http.util.EntityUtils;
+import org.basex.core.Context;
+import org.basex.query.QueryProcessor;
+import org.basex.query.iter.Iter;
+import org.basex.query.value.item.Item;
+
 import au.com.quaysystems.doh.towings.web.mq.MReceiver;
 import au.com.quaysystems.doh.towings.web.services.AMSServices;
 import ch.qos.logback.classic.Level;
@@ -244,6 +257,48 @@ public class TowContextListenerBase implements ServletContextListener {
 			return reg;
 		}
 
+	}
+	
+	public String getTows(String from, String to) throws ClientProtocolException, IOException {
+
+		String URI = String.format(towRequestURL, from, to);
+
+		HttpClient client = HttpClientBuilder.create().build();
+		HttpUriRequest request = RequestBuilder.get()
+				.setUri(URI)
+				.setHeader("Authorization", token)
+				.build();
+
+		HttpResponse response = client.execute(request);
+		int statusCode = response.getStatusLine().getStatusCode();
+
+		if (statusCode == HttpStatus.SC_OK) {
+			return EntityUtils.toString(response.getEntity());
+		} else {
+			log.error("GET FAILURE");
+			return "<Status>Failed</Failed>";
+		}				    
+	}
+
+	public String getTow(String fltDescriptor) throws ClientProtocolException, IOException {
+
+		String url = towRequestURL.substring(0, towRequestURL.indexOf("Tow"))+fltDescriptor+"/Towings";
+
+		HttpClient client = HttpClientBuilder.create().build();
+		HttpUriRequest request = RequestBuilder.get()
+				.setUri(url)
+				.setHeader("Authorization", token)
+				.build();
+
+		HttpResponse response = client.execute(request);
+		int statusCode = response.getStatusLine().getStatusCode();
+
+		if (statusCode == HttpStatus.SC_OK) {
+			return EntityUtils.toString(response.getEntity());
+		} else {
+			log.error("GET FAILURE");
+			return "<Status>Failed</Failed>";
+		}				    
 	}
 
 	@Override

@@ -76,7 +76,7 @@ public class RequestListener extends TowContextListenerBase {
 			"</soap:Envelope>";
 
 	private String syncTemplate = "<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">\r\n" + 
-			" <soap:Header><Sync>true</Sync></soap:Header>\r\n" + 
+			" <soap:Header correlationID=\"SITASYNC\"><Sync>true</Sync></soap:Header>\r\n" + 
 			" <soap:Body>\r\n" + 
 			"  <ArrayOfTowing xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\r\n" + 
 			"   %s\r\n"+
@@ -89,6 +89,7 @@ public class RequestListener extends TowContextListenerBase {
 					"for $x in fn:parse-xml($var1)//Towing\r\n" + 
 					"return $x";
 	private final DateTimeFormatter dtf = DateTimeFormat.forPattern("yyyy-MM-dd'T'HH:mm:ss");
+	
 
 	@Override
 	public void contextInitialized(ServletContextEvent servletContextEvent) {
@@ -202,27 +203,6 @@ public class RequestListener extends TowContextListenerBase {
 			log.error(e.getMessage());
 			return false;
 		}
-	}
-
-	public String getTows(String from, String to) throws ClientProtocolException, IOException {
-
-		String URI = String.format(towRequestURL, from, to);
-
-		HttpClient client = HttpClientBuilder.create().build();
-		HttpUriRequest request = RequestBuilder.get()
-				.setUri(URI)
-				.setHeader("Authorization", token)
-				.build();
-
-		HttpResponse response = client.execute(request);
-		int statusCode = response.getStatusLine().getStatusCode();
-
-		if (statusCode == HttpStatus.SC_OK) {
-			return EntityUtils.toString(response.getEntity());
-		} else {
-			log.error("GET FAILURE");
-			return "<Status>Failed</Failed>";
-		}				    
 	}
 
 	public String getTowingsXML(String input) {
