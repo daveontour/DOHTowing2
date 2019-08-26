@@ -1,6 +1,5 @@
 package au.com.quaysystems.doh.towings.web.listeners;
 
-import java.io.IOException;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.regex.Matcher;
@@ -9,14 +8,6 @@ import java.util.regex.Pattern;
 import javax.servlet.ServletContextEvent;
 import javax.servlet.annotation.WebListener;
 
-import org.apache.http.HttpResponse;
-import org.apache.http.HttpStatus;
-import org.apache.http.client.ClientProtocolException;
-import org.apache.http.client.HttpClient;
-import org.apache.http.client.methods.HttpUriRequest;
-import org.apache.http.client.methods.RequestBuilder;
-import org.apache.http.impl.client.HttpClientBuilder;
-import org.apache.http.util.EntityUtils;
 import org.basex.core.Context;
 import org.basex.query.QueryProcessor;
 import org.basex.query.iter.Iter;
@@ -89,7 +80,10 @@ public class RequestListener extends TowContextListenerBase {
 					"for $x in fn:parse-xml($var1)//Towing\r\n" + 
 					"return $x";
 	private final DateTimeFormatter dtf = DateTimeFormat.forPattern("yyyy-MM-dd'T'HH:mm:ss");
-	
+	public boolean stopThread = false;
+
+	private Timer periodicTimer;
+
 
 	@Override
 	public void contextInitialized(ServletContextEvent servletContextEvent) {
@@ -118,6 +112,14 @@ public class RequestListener extends TowContextListenerBase {
 		// Start the listener for incoming requests
 		this.startListener();
 
+	}
+
+	@Override
+	public void contextDestroyed(ServletContextEvent servletContextEvent) {
+		this.stopThread = true;
+		if (periodicTimer != null) {
+			periodicTimer.cancel();
+		}
 	}
 
 	public void startListener() {
@@ -171,8 +173,8 @@ public class RequestListener extends TowContextListenerBase {
 		Period p = new Period(now, sched, PeriodType.millis());
 		long delay = Math.abs(p.getValue(0));
 
-		Timer timer = new Timer("Periodic Refresh");
-		timer.schedule(
+		periodicTimer = new Timer("Periodic Refresh");
+		periodicTimer.schedule(
 				dailyTask,
 				delay,
 				refreshPeriod
@@ -231,6 +233,11 @@ public class RequestListener extends TowContextListenerBase {
 
 			do {
 
+				if (stopThread) {
+					log.info("Stopping Request Listener Thread");
+					return;
+				}
+
 				MReceiver recv = connectToMQ(ibminqueue);
 				if (recv == null) {
 					log.error(String.format("Exceeded IBM MQ connect retry limit {%s}. Exiting", retriesIBMMQ));
@@ -243,6 +250,11 @@ public class RequestListener extends TowContextListenerBase {
 				boolean continueOK = true;
 
 				do {
+					if (stopThread) {
+						log.info("Stopping Request Listener Thread");
+						return;
+					}
+
 					try {
 
 						String message = null;
@@ -256,6 +268,10 @@ public class RequestListener extends TowContextListenerBase {
 						} catch (MQException ex) {
 							if ( ex.completionCode == 2 && ex.reasonCode == MQConstants.MQRC_NO_MSG_AVAILABLE) {
 								log.debug("No Request Messages");
+								if (stopThread) {
+									log.info("Stopping Request Listener Thread");
+									return;
+								}
 								continue;
 							}
 						}

@@ -1,19 +1,10 @@
 package au.com.quaysystems.doh.towings.web.listeners;
 
 import java.io.IOException;
-import java.util.HashMap;
 
 import javax.servlet.ServletContextEvent;
 import javax.servlet.annotation.WebListener;
 
-import org.apache.http.HttpResponse;
-import org.apache.http.HttpStatus;
-import org.apache.http.client.ClientProtocolException;
-import org.apache.http.client.HttpClient;
-import org.apache.http.client.methods.HttpUriRequest;
-import org.apache.http.client.methods.RequestBuilder;
-import org.apache.http.impl.client.HttpClientBuilder;
-import org.apache.http.util.EntityUtils;
 import org.basex.core.Context;
 import org.basex.data.Result;
 import org.basex.query.QueryProcessor;
@@ -64,6 +55,8 @@ public class BridgeContextListener extends TowContextListenerBase {
 			"  </Notification>\r\n" + 
 			" </soap:Body>\r\n" + 
 			"</soap:Envelope>";
+	
+	public boolean stopThread = false;
 
 	@Override
 	public void contextInitialized(ServletContextEvent servletContextEvent) {
@@ -72,6 +65,11 @@ public class BridgeContextListener extends TowContextListenerBase {
 
 		// Start the listener for incoming notification
 		this.startListener();
+	}
+	
+	@Override
+	public void contextDestroyed(ServletContextEvent servletContextEvent) {
+		this.stopThread = true;
 	}
 
 	public void startListener() {
@@ -87,8 +85,17 @@ public class BridgeContextListener extends TowContextListenerBase {
 	public class NotifcationBridgeListener extends Thread {
 
 		public void run() {
+			
+			if (stopThread) {
+				log.info("Stopping Bridge Listener Thread");
+				return;
+			}
 
-			do {				
+			do {	
+				if (stopThread) {
+					log.info("Stopping Bridge Listener Thread");
+					return;
+				}
 				MReceiver recv = connectToMQ(msmqbridge);
 				if (recv == null) {
 					log.error(String.format("Exceeded IBM MQ connect retry limit {%s}. Exiting", retriesIBMMQ));
@@ -100,6 +107,11 @@ public class BridgeContextListener extends TowContextListenerBase {
 				boolean continueOK = true;
 
 				do {
+					if (stopThread) {
+						log.info("Stopping Bridge Listener Thread");
+						return;
+					}
+					
 					try {
 						String message = null;
 						try {
@@ -112,6 +124,10 @@ public class BridgeContextListener extends TowContextListenerBase {
 						} catch (MQException ex) {
 							if ( ex.completionCode == 2 && ex.reasonCode == MQConstants.MQRC_NO_MSG_AVAILABLE) {
 								log.debug("No Notification Messages");
+								if (stopThread) {
+									log.info("Stopping Bridge Listener Thread");
+									return;
+								}
 								continue;
 							}
 						} 
@@ -179,6 +195,9 @@ public class BridgeContextListener extends TowContextListenerBase {
 	}
 
 	public void handleFlightUpdate(String message) {
+		
+		log.info("Handling Updated Notification");
+		
 		String queryBody = 
 				"declare variable $var1 as xs:string external;\n"+
 						"for $x in fn:parse-xml($var1)//AircraftChange/NewValue/Aircraft/AircraftId/Registration/text()\r\n" + 
@@ -199,11 +218,12 @@ public class BridgeContextListener extends TowContextListenerBase {
 		
 		// Does the notification have a new aircraft registration
 		if (rego == null || rego.length() < 2) {
+			log.info("Flight Update Does NOT include rego update");
 			return;
-		}	
+		} else {
+			log.info("Flight Update DOES include rego update, processing");
+		}
 
-		System.out.println("===== Rego: "+rego+"  ======");
-		System.out.println(message);
 
 		
 		//It does, so construct the flight descriptor
@@ -211,11 +231,25 @@ public class BridgeContextListener extends TowContextListenerBase {
 		if (fltDescriptor == null) {
 			return;
 		}
+		
+		if (fltDescriptor.length() < 10) {
+			log.error("========== Flight Descriptor Parsing Problem ==========");
+			log.error("===== Flt Descriptor ===:  "+ fltDescriptor);
+			log.error("========== Source Message Below =======================");
+			log.error(message);
+			log.error("========== End of Source Message ======================");
+			
+			// Should return here, but let it go ahead so the problem turns up in the 
+			// event log so it can be identified. 
+			//return;
+		} else {
+			log.info(fltDescriptor);
+		}
 
 		try {
 			// Get all the towing events for this fligt descriptor
 			String tows = this.getTow(fltDescriptor);
-			System.out.println(tows);
+		
 
 			// Get all the towing events for this fligt descriptor
 			String queryTowing = 
@@ -234,12 +268,12 @@ public class BridgeContextListener extends TowContextListenerBase {
 					// as a normal notification message.
 					String tow = item.serialize().toString();
 					String msg = String.format(notificationDummy, tow);
-					System.out.println(msg);
+		
 					try {
 						MSender send = new MSender(msmqbridge, host, qm, channel,  port,  user,  pass);
 						send.mqPut(msg);
 						send.disconnect();
-						log.info("Constructed TowNOtification Message Sent");
+						log.info("Constructed TowNotification Message Sent");
 					} catch (Exception e) {
 						log.error("Sync Send Error");
 						log.error(e.getMessage());
