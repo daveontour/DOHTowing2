@@ -63,11 +63,6 @@ public class AMSServices {
 		
 	}
 	
-	private String stripNS(String xml) {
-    	return xml.replaceAll("xmlns(.*?)=(\".*?\")", "");
-	}
-
-	
 	public String getFlight( String id) {
 
 	//	String id = "6E1713@2019-08-01T09:00A";
@@ -107,16 +102,16 @@ public class AMSServices {
 			int statusCode = response.getStatusLine().getStatusCode();
 
 			if (statusCode == HttpStatus.SC_OK) {
-				return stripNS(EntityUtils.toString(response.getEntity()));
+				return EntityUtils.toString(response.getEntity());
 			} else {
 				log.error("GET FAILURE");
-				return "<Status>Failed</Failed>";
+				return "<Status>Failed</Status>";
 			}
 		} catch (Exception e) {
 			log.error("AMS WebService ERROR");
 			log.error(e.getMessage());
 			e.printStackTrace();
-			return "<Status>Failed</Failed>";
+			return "<Status>Failed</Status>";
 		} 		
 	}
 }

@@ -8,19 +8,18 @@ import com.ibm.mq.constants.MQConstants;
 
 public class MBase {
 
-	protected static MQQueueManager qMgr;
+	protected MQQueueManager qMgr;
 	public MQQueue queue;
 	protected boolean disconected = true;
 
 	public int getQueueDepth() {
-		try {
-			int depth = queue.getCurrentDepth();
-			return depth;
-		} catch (MQException e) {
-			e.printStackTrace();
-		}
 
-		return 0;
+		try {
+			return queue.getCurrentDepth();
+		} catch (Exception e) {
+			e.printStackTrace();
+			return 0;
+		}
 	}
 
 	public boolean disconnect() {

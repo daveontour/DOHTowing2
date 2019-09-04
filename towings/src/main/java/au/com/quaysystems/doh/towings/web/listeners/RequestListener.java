@@ -1,9 +1,8 @@
 package au.com.quaysystems.doh.towings.web.listeners;
 
+import java.util.ArrayList;
 import java.util.Timer;
 import java.util.TimerTask;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import javax.servlet.ServletContextEvent;
 import javax.servlet.annotation.WebListener;
@@ -12,6 +11,12 @@ import org.basex.core.Context;
 import org.basex.query.QueryProcessor;
 import org.basex.query.iter.Iter;
 import org.basex.query.value.item.Item;
+import org.jdom2.Document;
+import org.jdom2.Element;
+import org.jdom2.Namespace;
+import org.jdom2.filter.Filters;
+import org.jdom2.xpath.XPathExpression;
+import org.jdom2.xpath.XPathFactory;
 import org.joda.time.DateTime;
 import org.joda.time.Period;
 import org.joda.time.PeriodType;
@@ -65,7 +70,7 @@ public class RequestListener extends TowContextListenerBase {
 			"  </ArrayOfTowing>\r\n" + 
 			" </soap:Body>\r\n" + 
 			"</soap:Envelope>";
-
+	
 	private String syncTemplate = "<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">\r\n" + 
 			" <soap:Header correlationID=\"SITASYNC\"><Sync>true</Sync></soap:Header>\r\n" + 
 			" <soap:Body>\r\n" + 
@@ -232,12 +237,6 @@ public class RequestListener extends TowContextListenerBase {
 		public void run() {
 
 			do {
-
-				if (stopThread) {
-					log.info("Stopping Request Listener Thread");
-					return;
-				}
-
 				MReceiver recv = connectToMQ(ibminqueue);
 				if (recv == null) {
 					log.error(String.format("Exceeded IBM MQ connect retry limit {%s}. Exiting", retriesIBMMQ));
@@ -250,13 +249,7 @@ public class RequestListener extends TowContextListenerBase {
 				boolean continueOK = true;
 
 				do {
-					if (stopThread) {
-						log.info("Stopping Request Listener Thread");
-						return;
-					}
-
 					try {
-
 						String message = null;
 						try {
 							message = recv.mGet(msgRecvTimeout, true);
@@ -280,17 +273,9 @@ public class RequestListener extends TowContextListenerBase {
 							message = message.substring(message.indexOf("<"));
 						} catch (Exception e1) {
 							log.info("Badly formatted request received");
-							System.out.println(message);
+							log.debug(message);
 						}
-
-						Pattern p = Pattern.compile("CorrelationID>([a-zA-Z0-9]*)<");
-						Matcher m = p.matcher(message);
-
-						String correlationID = "-";
-						if (m.find()) {
-							correlationID = m.group(1).replaceAll(" ", "");
-						}
-
+						
 
 						DateTime dt = new DateTime();
 						DateTime fromTime = new DateTime(dt.plusMinutes(fromMin));
@@ -298,22 +283,41 @@ public class RequestListener extends TowContextListenerBase {
 
 						String from = dtf.print(fromTime);
 						String to = dtf.print(toTime);
-
-
-						p = Pattern.compile("RangeFrom>(.*)<");
-						m = p.matcher(message);
-
-						if (m.find()) {
-							from = m.group(1).replaceAll(" ", "");
+						String correlationID = "-";
+						
+						// Extract the from and to times from the incoming message
+						
+						Document xmlDoc = getDocumentFromString(message);
+						Element root = xmlDoc.getRootElement();
+						
+						ArrayList<Namespace> ns = new ArrayList<>();
+						ns.add(Namespace.getNamespace("soap", "http://www.w3.org/2001/12/soap-envelope"));
+						ns.add(Namespace.getNamespace("aip", "http://www.sita.aero/aip/XMLSchema"));					
+						XPathFactory xpfac = XPathFactory.instance();
+						
+						XPathExpression<Element> xp = xpfac.compile("//soap:Body//aip:RangeFrom", Filters.element(),null,ns);
+						
+						try {
+							from = xp.evaluateFirst(root).getValue();
+						} catch (Exception e3) {
+							from = dtf.print(fromTime);;
+						}
+						
+						try {
+							xp = xpfac.compile("//soap:Body//aip:RangeTo", Filters.element(),null,ns);
+							to = xp.evaluateFirst(root).getValue();
+						} catch (Exception e2) {
+							to = dtf.print(toTime);
+						}
+						
+						try {
+							xp = xpfac.compile("//soap:Header//aip:CorrelationID", Filters.element(),null,ns);
+							correlationID = xp.evaluateFirst(root).getValue();
+						} catch (Exception e1) {
+							correlationID = "-";
 						}
 
-						p = Pattern.compile("RangeTo>(.*)<");
-						m = p.matcher(message);
-
-						if (m.find()) {
-							to = m.group(1).replaceAll(" ", "");
-						}
-
+						
 						log.debug(correlationID+"  "+from+" "+to);
 
 						String response = getTows(from,to);
@@ -323,6 +327,7 @@ public class RequestListener extends TowContextListenerBase {
 							MSender send = new MSender(ibmoutqueue, host, qm, channel,  port,  user,  pass);
 							send.mqPut(msg);
 							log.debug("Request Response Sent");
+							log.trace(msg);
 							continueOK = false;
 
 							try {
@@ -343,8 +348,8 @@ public class RequestListener extends TowContextListenerBase {
 						//						recv.disconnect();
 						continueOK = false;
 					}
-				} while (continueOK);
-			} while (true);
+				} while (continueOK && !stopThread);
+			} while (!stopThread);
 		}
 	}
 }

@@ -1,13 +1,14 @@
 package au.com.quaysystems.doh.towings.web.listeners;
 
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UnsupportedEncodingException;
+import java.util.ArrayList;
 import java.util.Properties;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import javax.servlet.ServletContextEvent;
 import javax.servlet.ServletContextListener;
@@ -16,10 +17,19 @@ import org.apache.http.HttpResponse;
 import org.apache.http.HttpStatus;
 import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.HttpClient;
+import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.HttpUriRequest;
 import org.apache.http.client.methods.RequestBuilder;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.util.EntityUtils;
+import org.jdom2.Document;
+import org.jdom2.Element;
+import org.jdom2.JDOMException;
+import org.jdom2.Namespace;
+import org.jdom2.filter.Filters;
+import org.jdom2.input.SAXBuilder;
+import org.jdom2.xpath.XPathExpression;
+import org.jdom2.xpath.XPathFactory;
 
 import au.com.quaysystems.doh.towings.web.mq.MReceiver;
 import au.com.quaysystems.doh.towings.web.services.AMSServices;
@@ -68,6 +78,7 @@ public class TowContextListenerBase implements ServletContextListener {
 	protected boolean syncOnStartUp;
 
 	protected Properties props;
+	private int httpRequestTimeout;
 
 	@Override
 	public void contextInitialized(ServletContextEvent servletContextEvent) {
@@ -102,6 +113,7 @@ public class TowContextListenerBase implements ServletContextListener {
 		ibmoutqueue = props.getProperty("mq.ibmoutqueue");
 
 		towRequestURL = props.getProperty("towrequest.url", "http://localhost:80/api/v1/DOH/Towings/%s/%s");
+		httpRequestTimeout = Integer.parseInt(props.getProperty("httpRequestTimeout", "10000"));
 
 		airport = props.getProperty("airport");
 		wsurl = props.getProperty("ws.url");
@@ -158,6 +170,9 @@ public class TowContextListenerBase implements ServletContextListener {
 	public void setLogLevel() {
 
 		switch(logLevel) {
+		case "TRACE" :
+			log.setLevel(Level.TRACE);
+			break;
 		case "ERROR" :
 			log.setLevel(Level.ERROR);
 			break;
@@ -206,24 +221,28 @@ public class TowContextListenerBase implements ServletContextListener {
 		}
 	}
 
-	public String getRegistration(String notif) {
+	public String getRegistration(String notif) throws JDOMException, IOException {
+		
+		Document xmlDoc = getDocumentFromString(notif);
+		Element root = xmlDoc.getRootElement();
+		
+		ArrayList<Namespace> ns = new ArrayList<>();
+		ns.add(Namespace.getNamespace("s", "http://schemas.xmlsoap.org/soap/envelope/"));
+		ns.add(Namespace.getNamespace("amsws", "http://www.sita.aero/ams6-xml-api-webservice"));					
+		ns.add(Namespace.getNamespace("amsdt", "http://www.sita.aero/ams6-xml-api-datatypes"));					
+		XPathFactory xpfac = XPathFactory.instance();
+		
+		XPathExpression<Element> xp = xpfac.compile("//FlightDescriptor", Filters.element(),null,ns);
 
-		// Pattern for getting the flight descriptor from the input message
-		Pattern pDescriptor = Pattern.compile("<FlightDescriptor>(.*)</FlightDescriptor>");
-
-		// Pattern for getting the registration from the return flight record
-		Pattern pReg = Pattern.compile("<Registration>([a-zA-Z0-9]*)</Registration>");
-
-		// If any errors occur or registration not available
 		String reg = "nil";
-
-
-		//Extract the flight descriptor
-		Matcher m = pDescriptor.matcher(notif);
 		String flightID = null;
-		if (m.find()) {
-			flightID = m.group(1);
+		
+		try {
+			flightID = xp.evaluateFirst(root).getValue();
+		} catch (Exception e1) {
+			flightID = null;
 		}
+
 
 		if (flightID == null) {
 			return reg;
@@ -232,20 +251,21 @@ public class TowContextListenerBase implements ServletContextListener {
 		try {
 			// Use the AMS Web Services to get the flight using the flight descriptor
 			String flt = ams.getFlight(flightID);
+				
 			if (flt == null) {
 				return reg;
 			} 
 
-			// Extract the registration from the flight record returned from AMS
-			Matcher mReg = pReg.matcher(flt);
-			if (mReg.find()) {
-				reg = mReg.group(1);
+			xmlDoc = getDocumentFromString(flt);
+			root = xmlDoc.getRootElement();
+			XPathExpression<Element> xp2 = xpfac.compile("//s:Body//amsdt:Registration", Filters.element(),null,ns);
 
-				// If we get here, the registration has been found
-				return reg;
+			try {
+				reg = xp2.evaluateFirst(root).getValue();
+			} catch (Exception e) {
+				reg = "nil";
 			}
 
-			// If we get here, the registration was not found, so just returning the default
 			return reg;
 
 		} catch (Exception e) {
@@ -260,32 +280,53 @@ public class TowContextListenerBase implements ServletContextListener {
 	public String getTows(String from, String to) throws ClientProtocolException, IOException {
 
 		String URI = String.format(towRequestURL, from, to);
+		log.trace("Get Tow URL Created: "+ URI);
+		
+		RequestConfig requestConfig = RequestConfig.custom()
+			    .setConnectionRequestTimeout(httpRequestTimeout)
+			    .setConnectTimeout(httpRequestTimeout)
+			    .setSocketTimeout(httpRequestTimeout)
+			    .build();
 
 		HttpClient client = HttpClientBuilder.create().build();
 		HttpUriRequest request = RequestBuilder.get()
 				.setUri(URI)
 				.setHeader("Authorization", token)
+				.setConfig(requestConfig)
 				.build();
+		
 
 		HttpResponse response = client.execute(request);
 		int statusCode = response.getStatusLine().getStatusCode();
 
 		if (statusCode == HttpStatus.SC_OK) {
-			return EntityUtils.toString(response.getEntity());
+			log.debug("Get Tow Information from AMS Succeeded");
+			String res = EntityUtils.toString(response.getEntity());
+			log.debug(res);
+			return res;
 		} else {
-			log.error("GET FAILURE");
-			return "<Status>Failed</Failed>";
+			log.error(String.format("Get Tow information from AMS failed. HTTP Status Code: %s", statusCode));
+			return "<Status>Failed</Status>";
 		}				    
 	}
 
 	public String getTow(String fltDescriptor) throws ClientProtocolException, IOException {
 
 		String url = towRequestURL.substring(0, towRequestURL.indexOf("Tow"))+fltDescriptor+"/Towings";
+		log.trace("Get Towing URL Created: "+ url);
+		
+		RequestConfig requestConfig = RequestConfig.custom()
+			    .setConnectionRequestTimeout(httpRequestTimeout)
+			    .setConnectTimeout(httpRequestTimeout)
+			    .setSocketTimeout(httpRequestTimeout)
+			    .build();
+
 
 		HttpClient client = HttpClientBuilder.create().build();
 		HttpUriRequest request = RequestBuilder.get()
 				.setUri(url)
 				.setHeader("Authorization", token)
+				.setConfig(requestConfig)
 				.build();
 
 		HttpResponse response = client.execute(request);
@@ -298,6 +339,27 @@ public class TowContextListenerBase implements ServletContextListener {
 			return "<Status>Failed</Failed>";
 		}				    
 	}
+	
+	public Document getDocumentFromString(String string) throws JDOMException, IOException {
+	    if (string == null) {
+	        throw new IllegalArgumentException("string may not be null");
+	    }
+
+	    byte[] byteArray = null;
+	    try {
+	        byteArray = string.getBytes("UTF-8");
+	    } catch (UnsupportedEncodingException e) {
+	    }
+	    ByteArrayInputStream baos = new ByteArrayInputStream(byteArray);
+
+	    // Reader reader = new StringReader(hOCRText);
+	    SAXBuilder builder = new SAXBuilder();
+	    Document document = builder.build(baos);
+
+	    return document;
+	}
+	
+
 
 	@Override
 	public void contextDestroyed(ServletContextEvent sce) {
