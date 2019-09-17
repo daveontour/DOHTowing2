@@ -82,14 +82,14 @@ public class RequestListener extends TowContextListenerBase {
 			" </soap:Body>\r\n" + 
 			"</soap:Envelope>";
 	
-	private String template2 = "<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\"  xmlns:aip=\"http://www.sita.aero/aip/XMLSchema\">\r\n" + 
+	private String template2 = "<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\"  xmlns:aip=\"http://www.sita.aero/aip/XMLSchema\"  xmlns:ams-mob=\"http://www.sita.aero/ams6-xml-mobilize\"  encodingStyle=\"http://www.w3.org/2001/12/soap-encoding\">\r\n" + 
 			"  <soap:Header>"+
 			"	%s\r\n" + 
 			"</soap:Header>\r\n" + 
 			"  <soap:Body>\r\n" + 
-			"  <ArrayOfTowing xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\r\n" + 
+			"  <ams-mob:ArrayOfTowing xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\r\n" + 
 			"   %s\r\n"+
-			"  </ArrayOfTowing>\r\n" + 
+			"  </ams-mob:ArrayOfTowing>\r\n" + 
 			"  </soap:Body>\r\n" + 
 			" </soap:Envelope>";
 	

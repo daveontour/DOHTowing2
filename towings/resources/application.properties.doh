@@ -58,7 +58,7 @@ msg.recv.timeout=10000
 httpRequestTimeout=10000
 
 # Send a sync of all the tows when the interface starts up
-syncOnStartUp=true
+syncOnStartUp=false
 
 # The size of the the window around "now" to get tows in minutes for periodic or startup sync
 fromMin=-1440
