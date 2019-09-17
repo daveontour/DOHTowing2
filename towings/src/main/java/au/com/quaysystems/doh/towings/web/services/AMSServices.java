@@ -104,7 +104,7 @@ public class AMSServices {
 			if (statusCode == HttpStatus.SC_OK) {
 				return EntityUtils.toString(response.getEntity());
 			} else {
-				log.error("GET FAILURE");
+				log.error("WebService GetFlight Error. HTTP Status Code: " +statusCode);
 				return "<Status>Failed</Status>";
 			}
 		} catch (Exception e) {

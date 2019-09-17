@@ -3,6 +3,7 @@ package au.com.quaysystems.doh.towings.web.listeners;
 import java.util.ArrayList;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.UUID;
 
 import javax.servlet.ServletContextEvent;
 import javax.servlet.annotation.WebListener;
@@ -22,6 +23,7 @@ import org.joda.time.Period;
 import org.joda.time.PeriodType;
 import org.joda.time.format.DateTimeFormat;
 import org.joda.time.format.DateTimeFormatter;
+import org.joda.time.format.ISODateTimeFormat;
 import org.slf4j.LoggerFactory;
 
 import com.ibm.mq.MQException;
@@ -79,6 +81,61 @@ public class RequestListener extends TowContextListenerBase {
 			"  </ArrayOfTowing>\r\n" + 
 			" </soap:Body>\r\n" + 
 			"</soap:Envelope>";
+	
+	private String template2 = "<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\"  xmlns:aip=\"http://www.sita.aero/aip/XMLSchema\">\r\n" + 
+			"  <soap:Header>"+
+			"	%s\r\n" + 
+			"</soap:Header>\r\n" + 
+			"  <soap:Body>\r\n" + 
+			"  <ArrayOfTowing xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\r\n" + 
+			"   %s\r\n"+
+			"  </ArrayOfTowing>\r\n" + 
+			"  </soap:Body>\r\n" + 
+			" </soap:Envelope>";
+	
+	private String syncTemplate2 = "<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"   xmlns:aip=\"http://www.sita.aero/aip/XMLSchema\">\r\n" + 
+			" <soap:Header>%s</soap:Header>\r\n" + 
+			" <soap:Body>\r\n" + 
+			"  <ArrayOfTowing xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\r\n" + 
+			"   %s\r\n"+
+			"  </ArrayOfTowing>\r\n" + 
+			" </soap:Body>\r\n" + 
+			"</soap:Envelope>";
+	String macsRubbish = "<soap:MessageMetadata>\r\n" + 
+			"      <aip:Source>SITA</aip:Source>\r\n" + 
+			"      <aip:Timestamp>%s</aip:Timestamp>\r\n" + 
+			"      <aip:MessageType>PublishFlightDataInput</aip:MessageType>\r\n" + 
+			"      <aip:ExtensionFields>\r\n" + 
+			"        <aip:ExtensionField Name=\"EventType\" >\r\n" + 
+			"          <aip:Value Type=\"String\" >\r\n" + 
+			"            <aip:String>TOW_REQUEST_RESPONSE</aip:String>\r\n" + 
+			"          </aip:Value>\r\n" + 
+			"        </aip:ExtensionField>\r\n" + 
+			"      </aip:ExtensionFields>\r\n" + 
+			"      <aip:UUID>%s</aip:UUID>\r\n" + 
+			"    </soap:MessageMetadata>\r\n" + 
+			"    <soap:OperationData>\r\n" + 
+			"      <aip:OperationName/>\r\n" + 
+			"      <aip:CorrelationID>%s</aip:CorrelationID>\r\n" + 
+			"    </soap:OperationData>";
+	
+	String macsRubbishSync = "<soap:MessageMetadata>\r\n" + 
+			"      <aip:Source>SITA</aip:Source>\r\n" + 
+			"      <aip:Timestamp>%s</aip:Timestamp>\r\n" + 
+			"      <aip:MessageType>PublishFlightDataInput</aip:MessageType>\r\n" + 
+			"      <aip:ExtensionFields>\r\n" + 
+			"        <aip:ExtensionField Name=\"EventType\" >\r\n" + 
+			"          <aip:Value Type=\"String\" >\r\n" + 
+			"            <aip:String>TOW_MOVEMENT_UPDATE</aip:String>\r\n" + 
+			"          </aip:Value>\r\n" + 
+			"        </aip:ExtensionField>\r\n" + 
+			"      </aip:ExtensionFields>\r\n" + 
+			"      <aip:UUID>%s</aip:UUID>\r\n" + 
+			"    </soap:MessageMetadata>\r\n" + 
+			"    <soap:OperationData>\r\n" + 
+			"      <aip:OperationName/>\r\n" + 
+			"      <aip:CorrelationID></aip:CorrelationID>\r\n" + 
+			"    </soap:OperationData>";
 
 	String queryBody = 
 			"declare variable $var1 as xs:string external;\n"+
@@ -198,12 +255,31 @@ public class RequestListener extends TowContextListenerBase {
 		String to = dtf.print(toTime);
 
 		String response = getTows(from,to);
+		String towingsXML = this.getTowingsXML(response);
+		
+		// New header for MACS
+		DateTime dt2 = new DateTime();
+		DateTimeFormatter fmt = ISODateTimeFormat.dateTime();
+		String timestamp = fmt.print(dt2);
+		String uuid = UUID.randomUUID().toString();
+		String header = String.format(macsRubbishSync, timestamp, uuid );
+		String msg2 = String.format(syncTemplate2, header, towingsXML);
+		msg2 = msg2.replace("xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\"", "");	
+		
+		
 		String msg = String.format(syncTemplate, this.getTowingsXML(response));
 
 		try {
 			MSender send = new MSender(ibmoutqueue, host, qm, channel,  port,  user,  pass);
-			send.mqPut(msg);
+			send.mqPut(msg2);
 			log.info("Sync Sent");
+			
+			try {
+				send.disconnect();
+			} catch (Exception e) {
+				log.error("Send Disconnect Error - probably not fatal");
+			}
+			
 			return true;
 		} catch (Exception e) {
 			log.error("Sync Send Error");
@@ -321,13 +397,25 @@ public class RequestListener extends TowContextListenerBase {
 						log.debug(correlationID+"  "+from+" "+to);
 
 						String response = getTows(from,to);
-						String msg = String.format(template, correlationID, getTowingsXML(response));
+						String towingsXML = getTowingsXML(response);
+						
+						// New header for MACS
+						DateTime dt2 = new DateTime();
+						DateTimeFormatter fmt = ISODateTimeFormat.dateTime();
+						String timestamp = fmt.print(dt2);
+						String uuid = UUID.randomUUID().toString();
+						String header = String.format(macsRubbish, timestamp, uuid, correlationID );
+						String msg2 = String.format(template2, header, towingsXML);
+						msg2 = msg2.replace("xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\"", "");
+						
+						
+						String msg = String.format(template, correlationID, towingsXML);
 
 						try {
 							MSender send = new MSender(ibmoutqueue, host, qm, channel,  port,  user,  pass);
-							send.mqPut(msg);
+							send.mqPut(msg2);
 							log.debug("Request Response Sent");
-							log.trace(msg);
+							log.trace(msg2);
 							continueOK = false;
 
 							try {
