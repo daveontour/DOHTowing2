@@ -64,32 +64,34 @@ import ch.qos.logback.classic.Logger;
 @WebListener
 public class RequestListener extends TowContextListenerBase {
 
-	private String template = "<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">\r\n" + 
-			" <soap:Header correlationID=\"%s\"></soap:Header>\r\n" + 
-			" <soap:Body>\r\n" + 
-			"  <ArrayOfTowing xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\r\n" + 
-			"   %s\r\n"+
-			"  </ArrayOfTowing>\r\n" + 
-			" </soap:Body>\r\n" + 
-			"</soap:Envelope>";
-	
-	private String syncTemplate = "<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">\r\n" + 
-			" <soap:Header correlationID=\"SITASYNC\"><Sync>true</Sync></soap:Header>\r\n" + 
-			" <soap:Body>\r\n" + 
-			"  <ArrayOfTowing xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\r\n" + 
-			"   %s\r\n"+
-			"  </ArrayOfTowing>\r\n" + 
-			" </soap:Body>\r\n" + 
-			"</soap:Envelope>";
+//	private String template = "<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">\r\n" + 
+//			" <soap:Header correlationID=\"%s\"></soap:Header>\r\n" + 
+//			" <soap:Body>\r\n" + 
+//			"  <ArrayOfTowing xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\r\n" + 
+//			"   %s\r\n"+
+//			"  </ArrayOfTowing>\r\n" + 
+//			" </soap:Body>\r\n" + 
+//			"</soap:Envelope>";
+//	
+//	private String syncTemplate = "<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">\r\n" + 
+//			" <soap:Header correlationID=\"SITASYNC\"><Sync>true</Sync></soap:Header>\r\n" + 
+//			" <soap:Body>\r\n" + 
+//			"  <ArrayOfTowing xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\r\n" + 
+//			"   %s\r\n"+
+//			"  </ArrayOfTowing>\r\n" + 
+//			" </soap:Body>\r\n" + 
+//			"</soap:Envelope>";
 	
 	private String template2 = "<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\"  xmlns:aip=\"http://www.sita.aero/aip/XMLSchema\"  xmlns:ams-mob=\"http://www.sita.aero/ams6-xml-mobilize\"  encodingStyle=\"http://www.w3.org/2001/12/soap-encoding\">\r\n" + 
 			"  <soap:Header>"+
 			"	%s\r\n" + 
 			"</soap:Header>\r\n" + 
 			"  <soap:Body>\r\n" + 
-			"  <ams-mob:ArrayOfTowing xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\r\n" + 
+			" <ams-mob:AMS_Mobilize_Message>"+
+			"  <ArrayOfTowing xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\r\n" + 
 			"   %s\r\n"+
-			"  </ams-mob:ArrayOfTowing>\r\n" + 
+			"  </ArrayOfTowing>\r\n" + 
+			" </ams-mob:AMS_Mobilize_Message>"+
 			"  </soap:Body>\r\n" + 
 			" </soap:Envelope>";
 	
@@ -136,6 +138,8 @@ public class RequestListener extends TowContextListenerBase {
 			"      <aip:OperationName/>\r\n" + 
 			"      <aip:CorrelationID></aip:CorrelationID>\r\n" + 
 			"    </soap:OperationData>";
+	
+
 
 	String queryBody = 
 			"declare variable $var1 as xs:string external;\n"+
@@ -267,7 +271,7 @@ public class RequestListener extends TowContextListenerBase {
 		msg2 = msg2.replace("xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\"", "");	
 		
 		
-		String msg = String.format(syncTemplate, this.getTowingsXML(response));
+		//String msg = String.format(syncTemplate, this.getTowingsXML(response));
 
 		try {
 			MSender send = new MSender(ibmoutqueue, host, qm, channel,  port,  user,  pass);
@@ -409,7 +413,7 @@ public class RequestListener extends TowContextListenerBase {
 						msg2 = msg2.replace("xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\"", "");
 						
 						
-						String msg = String.format(template, correlationID, towingsXML);
+						//String msg = String.format(template, correlationID, towingsXML);
 
 						try {
 							MSender send = new MSender(ibmoutqueue, host, qm, channel,  port,  user,  pass);

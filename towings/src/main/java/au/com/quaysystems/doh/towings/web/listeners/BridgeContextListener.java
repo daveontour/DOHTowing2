@@ -38,39 +38,32 @@ import ch.qos.logback.classic.Logger;
 @WebListener
 public class BridgeContextListener extends TowContextListenerBase {
 
-	private String notifTemplate = "<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\">\r\n" + 
-			"  <soap:Header></soap:Header>\r\n" + 
-			"  <soap:Body>\r\n" + 
-			"	%s\r\n" + 
-			"  </soap:Body>\r\n" + 
-			" </soap:Envelope>";
-
-	private String notifTemplate2 = "<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\"  xmlns:aip=\"http://www.sita.aero/aip/XMLSchema\"  xmlns:ams-mob=\"http://www.sita.aero/ams6-xml-mobilize\"  encodingStyle=\"http://www.w3.org/2001/12/soap-encoding\">\r\n" + 
-			"  <soap:Header>"+
-			"	%s\r\n" + 
-			"</soap:Header>\r\n" + 
-			"  <soap:Body>\r\n" + 
-			"	%s\r\n" + 
-			"  </soap:Body>\r\n" + 
-			" </soap:Envelope>";
-	
-	private String macsRubbish = "<soap:MessageMetadata>\r\n" + 
-			"      <aip:Source>SITA</aip:Source>\r\n" + 
-			"      <aip:Timestamp>%s</aip:Timestamp>\r\n" + 
-			"      <aip:MessageType>PublishFlightDataInput</aip:MessageType>\r\n" + 
-			"      <aip:ExtensionFields>\r\n" + 
-			"        <aip:ExtensionField Name=\"EventType\" >\r\n" + 
-			"          <aip:Value Type=\"String\" >\r\n" + 
-			"            <aip:String>%s</aip:String>\r\n" + 
-			"          </aip:Value>\r\n" + 
-			"        </aip:ExtensionField>\r\n" + 
-			"      </aip:ExtensionFields>\r\n" + 
-			"      <aip:UUID>%s</aip:UUID>\r\n" + 
-			"    </soap:MessageMetadata>\r\n" + 
-			"    <soap:OperationData>\r\n" + 
-			"      <aip:OperationName/>\r\n" + 
-			"      <aip:CorrelationID></aip:CorrelationID>\r\n" + 
-			"    </soap:OperationData>";
+	String notTemplate = "<soap:Envelope xmlns:soap=\"http://www.w3.org/2001/12/soap-envelope\" xmlns:aip=\"http://www.sita.aero/aip/XMLSchema\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" encodingStyle=\"http://www.w3.org/2001/12/soap-encoding\" xmlns:ams-messages=\"http://www.sita.aero/ams6-xml-api-messages\" >\r\n" + 
+			"	<soap:Header>\r\n" + 
+			"		<soap:MessageMetadata>\r\n" + 
+			"			<aip:Source>SITA</aip:Source>\r\n" + 
+			"			<aip:Timestamp>%s</aip:Timestamp> \r\n" + 
+			"			<aip:MessageType>PublishGenericDataInput</aip:MessageType>  \r\n" + 
+			"			<aip:ExtensionFields>\r\n" + 
+			"				<aip:ExtensionField Name=\"EventType\">\r\n" + 
+			"					<aip:Value Type=\"String\">\r\n" + 
+			"						<aip:String>%s</aip:String>  \r\n" + 
+			"					</aip:Value>\r\n" + 
+			"				</aip:ExtensionField>\r\n" + 
+			"			</aip:ExtensionFields>\r\n" + 
+			"			<aip:UUID>%s</aip:UUID> \r\n" + 
+			"		</soap:MessageMetadata>\r\n" + 
+			"		<soap:OperationData>\r\n" + 
+			"			<aip:OperationName/>\r\n" + 
+			"			<aip:CorrelationID/>\r\n" + 
+			"		</soap:OperationData>\r\n" + 
+			"	</soap:Header>\r\n" + 
+			"	<soap:Body>\r\n" + 
+			"		<ams-messages:AMSX_Message>\r\n" + 
+			"           %s \r\n" +
+			"		</ams-messages:AMSX_Message>\r\n" + 
+			"	</soap:Body>\r\n" + 
+			"</soap:Envelope>";
 	
 	// Used by BaseX to extract the portion of the message we are interested in
 	public String queryBody = 
@@ -212,47 +205,41 @@ public class BridgeContextListener extends TowContextListenerBase {
 						DateTimeFormatter fmt = ISODateTimeFormat.dateTime();
 						String timestamp = fmt.print(dt);
 						String uuid = UUID.randomUUID().toString();
-						String header = String.format(macsRubbish, timestamp, eventType,uuid);
-						String notification2 = String.format(notifTemplate2, header, notification);
-						notification2 = notification2.replace("xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\"", "");
+						String notificationMessage = String.format(notTemplate,timestamp, eventType,uuid, notification);
+						notificationMessage = notificationMessage.replace("xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\"", "");
 						
 						if (eventType == "TOW_MOVEMENT_CREATION") {
-							notification2 = notification2.replace("<Notification", "<ams-mob:TowingCreatedNotification");
-							notification2 = notification2.replace("</Notification", "</ams-mob:TowingCreatedNotification");
-							notification2 = notification2.replace("type=\"TowingCreatedNotification\"", "");						
+							notificationMessage = notificationMessage.replace("<Notification", "<TowingCreatedNotification");
+							notificationMessage = notificationMessage.replace("</Notification", "</TowingCreatedNotification");
+							notificationMessage = notificationMessage.replace("type=\"TowingCreatedNotification\"", "");						
 						}
 						if (eventType == "TOW_MOVEMENT_UPDATE") {
-							notification2 = notification2.replace("<Notification", "<ams-mob:TowingUpdatedNotification");
-							notification2 = notification2.replace("</Notification", "</ams-mob:TowingUpdatedNotification");
-							notification2 = notification2.replace("type=\"TowingUpdatedNotification\"", "");						
+							notificationMessage = notificationMessage.replace("<Notification", "<TowingUpdatedNotification");
+							notificationMessage = notificationMessage.replace("</Notification", "</TowingUpdatedNotification");
+							notificationMessage = notificationMessage.replace("type=\"TowingUpdatedNotification\"", "");						
 							
 						}
 						if (eventType == "TOW_MOVEMENT_DELETION") {
-							notification2 = notification2.replace("<Notification", "<ams-mob:TowingDeletedNotification");
-							notification2 = notification2.replace("</Notification", "</ams-mob:TowingDeletedNotification");
-							notification2 = notification2.replace("type=\"TowingDeletedNotification\"", "");										
+							notificationMessage = notificationMessage.replace("<Notification", "<TowingDeletedNotification");
+							notificationMessage = notificationMessage.replace("</Notification", "</TowingDeletedNotification");
+							notificationMessage = notificationMessage.replace("type=\"TowingDeletedNotification\"", "");										
 						}
 
 					
 						// End of new header stuff
-					
-						
-						// notification2 being used now
-//						notification = String.format(notifTemplate, notification);
-//						notification = notification.replace("xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\"", "");
+
 
 						// Get the registration of the flight by extracting flight details and calling a web service to get the flight 
 						String rego = "<Registration>"+getRegistration(notification)+"</Registration>";
 						notification = notification.replaceAll("</FlightIdentifier>", rego+"\n</FlightIdentifier>");						
-						notification2 = notification2.replaceAll("</FlightIdentifier>", rego+"\n</FlightIdentifier>");						
+						notificationMessage = notificationMessage.replaceAll("</FlightIdentifier>", rego+"\n</FlightIdentifier>");						
 						log.debug("Message Processed");
 						
-						log.debug("New Message Format");
-						log.debug(notification2);
+						log.debug(notificationMessage);
 
 						try {
 							MSender send = new MSender(ibmoutqueue, host, qm, channel,  port,  user,  pass);
-							send.mqPut(notification2);
+							send.mqPut(notificationMessage);
 							log.debug("Message Sent");
 
 							try {
@@ -268,6 +255,7 @@ public class BridgeContextListener extends TowContextListenerBase {
 						}
 					} catch (Exception e) {
 						log.error("Unhandled Exception "+e.getMessage());
+						e.printStackTrace();
 						//						recv.disconnect();
 						continueOK = false;
 					}
