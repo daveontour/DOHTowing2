@@ -144,11 +144,16 @@ public class BridgeContextListener extends TowContextListenerBase {
 							if ( ex.completionCode == 2 && ex.reasonCode == MQConstants.MQRC_NO_MSG_AVAILABLE) {
 								log.debug("No Notification Messages");
 								continue;
+							} else {
+								// Unexpected MQ Error, exit the inner loop
+								log.error("Unhandled MQ error in inner loop");
+								log.error(ex.getMessage());
+								break;
 							}
 						} 
 
 						/*
-						 * Messages from the bridge queue that we are interested in TOW EVENTS and Flight 
+						 * Messages from the bridge queue that we are interested in are TOW EVENTS and Flight 
 						 * Updates. Flight Updates are important to see if the registration of a flight
 						 * has changed. 
 						 */
@@ -171,6 +176,7 @@ public class BridgeContextListener extends TowContextListenerBase {
 							continue;
 						}
 						
+						// Determine what type of tow event that it is
 						String eventType = null;
 						if (message.contains("TowingCreatedNotification")) {
 							eventType = "TOW_MOVEMENT_CREATION";
@@ -200,14 +206,17 @@ public class BridgeContextListener extends TowContextListenerBase {
 							notification = "<Error>true</Error>";
 						}
 
-						// New header for MACS
+						// Prepare the header information
 						DateTime dt = new DateTime();
 						DateTimeFormatter fmt = ISODateTimeFormat.dateTime();
 						String timestamp = fmt.print(dt);
 						String uuid = UUID.randomUUID().toString();
+						
+						// Put all the pieces of the message together into the correct structure
 						String notificationMessage = String.format(notTemplate,timestamp, eventType,uuid, notification);
 						notificationMessage = notificationMessage.replace("xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\"", "");
 						
+						//Put in the correct message type
 						if (eventType == "TOW_MOVEMENT_CREATION") {
 							notificationMessage = notificationMessage.replace("<Notification", "<TowingCreatedNotification");
 							notificationMessage = notificationMessage.replace("</Notification", "</TowingCreatedNotification");
@@ -225,16 +234,18 @@ public class BridgeContextListener extends TowContextListenerBase {
 							notificationMessage = notificationMessage.replace("type=\"TowingDeletedNotification\"", "");										
 						}
 
-					
-						// End of new header stuff
-
 
 						// Get the registration of the flight by extracting flight details and calling a web service to get the flight 
-						String rego = "<Registration>"+getRegistration(notification)+"</Registration>";
-						notification = notification.replaceAll("</FlightIdentifier>", rego+"\n</FlightIdentifier>");						
-						notificationMessage = notificationMessage.replaceAll("</FlightIdentifier>", rego+"\n</FlightIdentifier>");						
-						log.debug("Message Processed");
 						
+						String rego = getRegistration(notification);
+						
+						// Create an element representing the registration
+						String regoElement = "<Registration>"+rego+"</Registration>";
+						
+						// Substitute it into the end of the message
+						notificationMessage = notificationMessage.replaceAll("</FlightIdentifier>", regoElement+"\n</FlightIdentifier>");						
+
+						log.trace("Message Processed");						
 						log.debug(notificationMessage);
 
 						try {
@@ -268,9 +279,14 @@ public class BridgeContextListener extends TowContextListenerBase {
 		return xml.replaceAll("xmlns(.*?)=(\".*?\")", "");
 	}
 
+	/*
+	 * Handle flight update messages. 
+	 * There may have been an update to the registration of the aircraft operating the flight
+	 * in which case we need to send out an updates TOW_UPDATE message with the new registration
+	 */
 	public void handleFlightUpdate(String message) {
 		
-		log.info("Handling Updated Notification");
+		log.trace("Handling Updated Notification");
 		
 		String queryBody = 
 				"declare variable $var1 as xs:string external;\n"+
@@ -292,15 +308,16 @@ public class BridgeContextListener extends TowContextListenerBase {
 		
 		// Does the notification have a new aircraft registration
 		if (rego == null || rego.length() < 2) {
-			log.info("Flight Update Does NOT include rego update");
+			log.trace("Flight Update Does NOT include rego update");
 			return;
 		} else {
-			log.info("Flight Update DOES include rego update, processing");
+			log.trace("Flight Update DOES include rego update, processing");
 		}
 
 
 		
 		//It does, so construct the flight descriptor
+		// The flight descriptor is needed to find the towing events
 		String fltDescriptor = getFlightDescriptor(message);
 		if (fltDescriptor == null) {
 			return;
@@ -321,7 +338,7 @@ public class BridgeContextListener extends TowContextListenerBase {
 		}
 
 		try {
-			// Get all the towing events for this fligt descriptor
+			// Get all the towing events for this flight descriptor
 			String tows = this.getTow(fltDescriptor);
 		
 
@@ -346,10 +363,10 @@ public class BridgeContextListener extends TowContextListenerBase {
 					try {
 						MSender send = new MSender(msmqbridge, host, qm, channel,  port,  user,  pass);
 						send.mqPut(msg);
-						send.disconnect();
 						log.info("Constructed TowNotification Message Sent");
+						send.disconnect();
 					} catch (Exception e) {
-						log.error("Sync Send Error");
+						log.error("Flight Update dummy message Send Error");
 						log.error(e.getMessage());
 					}
 
@@ -363,6 +380,10 @@ public class BridgeContextListener extends TowContextListenerBase {
 		}
 	}
 
+	// The flight descriptor used by the AMS Webservice looks something like
+	//    "6E1713@2019-08-01T09:00A";
+	// so we need to construct this from the information in the message
+	
 	public String getFlightDescriptor(String message) {
 
 		String desc = null;

@@ -2,7 +2,6 @@ package au.com.quaysystems.doh.towings.web.listeners;
 
 import java.util.ArrayList;
 import java.util.Timer;
-import java.util.TimerTask;
 import java.util.UUID;
 
 import javax.servlet.ServletContextEvent;
@@ -19,8 +18,6 @@ import org.jdom2.filter.Filters;
 import org.jdom2.xpath.XPathExpression;
 import org.jdom2.xpath.XPathFactory;
 import org.joda.time.DateTime;
-import org.joda.time.Period;
-import org.joda.time.PeriodType;
 import org.joda.time.format.DateTimeFormat;
 import org.joda.time.format.DateTimeFormatter;
 import org.joda.time.format.ISODateTimeFormat;
@@ -295,8 +292,10 @@ public class RequestListener extends TowContextListenerBase {
 				String tow = item.serialize().toString();
 				
 				// The Tow XML does not include the registration, so go get the registration
-				// if avaialable and insert it.
+				// if available and insert it.
 				String rego = "<Registration>"+getRegistration(tow)+"</Registration>";
+
+				// Hack it at the the end of the XML 
 				tow = tow.replaceAll("</FlightIdentifier>", rego+"\n</FlightIdentifier>");
 				
 				// Add it to the existing 
@@ -314,7 +313,9 @@ public class RequestListener extends TowContextListenerBase {
 		
 		public void run() {
 
+			// Outer loop for establishing connection to MQ
 			do {
+				
 				MReceiver recv = connectToMQ(ibminqueue);
 				if (recv == null) {
 					log.error(String.format("Exceeded IBM MQ connect retry limit {%s}. Exiting", retriesIBMMQ));
@@ -326,6 +327,11 @@ public class RequestListener extends TowContextListenerBase {
 
 				boolean continueOK = true;
 
+				
+				// This is the inner loop which loops until a message is received
+				// The same receiver is used each time, until there a message. When the message processing 
+				// is complete, the receiver is disconnected exits to the outer loop loop for reconnection
+				// continueOK is used to control whether the loop exits to the outer loop
 				do {
 					try {
 						String message = null;
@@ -343,18 +349,28 @@ public class RequestListener extends TowContextListenerBase {
 									log.info("Stopping Request Listener Thread");
 									return;
 								}
+								
+								// No message is available, so still OK to continue loop
 								continue;
+							} else {
+								// Unexpected MQ Error, exit the inner loop
+								log.error("Unhandled MQ error in inner loop");
+								log.error(ex.getMessage());
+								break;
 							}
 						}
 						log.debug("Request Message Received");
 						try {
+							// Just the XML. Avoid and rubbish at the start of the string
 							message = message.substring(message.indexOf("<"));
 						} catch (Exception e1) {
 							log.info("Badly formatted request received");
 							log.debug(message);
+							break;
 						}
 						
 
+						// Set up the default range and correlationID
 						DateTime dt = new DateTime();
 						DateTime fromTime = new DateTime(dt.plusMinutes(fromMin));
 						DateTime toTime = new DateTime(dt.plusMinutes(toMin));
@@ -363,8 +379,7 @@ public class RequestListener extends TowContextListenerBase {
 						String to = dtf.print(toTime);
 						String correlationID = "-";
 						
-						// Extract the from and to times from the incoming message
-						
+						// Extract the from and to times from the incoming message					
 						Document xmlDoc = getDocumentFromString(message);
 						Element root = xmlDoc.getRootElement();
 						
@@ -373,23 +388,27 @@ public class RequestListener extends TowContextListenerBase {
 						ns.add(Namespace.getNamespace("aip", "http://www.sita.aero/aip/XMLSchema"));					
 						XPathFactory xpfac = XPathFactory.instance();
 						
-						XPathExpression<Element> xpathExpression = xpfac.compile("//soap:Body//aip:RangeFrom", Filters.element(),null,ns);
-						
+						//From time
 						try {
+							XPathExpression<Element> xpathExpression = xpfac.compile("//soap:Body//aip:RangeFrom", Filters.element(),null,ns);
 							from = xpathExpression.evaluateFirst(root).getValue();
 						} catch (Exception e3) {
+							//Use the default
 							from = dtf.print(fromTime);;
 						}
 						
+						//To time
 						try {
-							xpathExpression = xpfac.compile("//soap:Body//aip:RangeTo", Filters.element(),null,ns);
+							XPathExpression<Element> xpathExpression = xpfac.compile("//soap:Body//aip:RangeTo", Filters.element(),null,ns);
 							to = xpathExpression.evaluateFirst(root).getValue();
 						} catch (Exception e2) {
+							//Use the default
 							to = dtf.print(toTime);
 						}
 						
+						//Correlation ID
 						try {
-							xpathExpression = xpfac.compile("//soap:Header//aip:CorrelationID", Filters.element(),null,ns);
+							XPathExpression<Element> xpathExpression = xpfac.compile("//soap:Header//aip:CorrelationID", Filters.element(),null,ns);
 							correlationID = xpathExpression.evaluateFirst(root).getValue();
 						} catch (Exception e1) {
 							correlationID = "-";
@@ -399,12 +418,12 @@ public class RequestListener extends TowContextListenerBase {
 						log.debug(correlationID+"  "+from+" "+to);
 
 						// We have the required range, so now go to AMS and get the towing events in the specified range
-						String response = getTows(from,to);
+						String towingEvents = getTows(from,to);
 						
 						// Add the aircraft registration to the tow events that were returned
-						String towingsXML = getTowingsXML(response);
+						String towingsXML = getTowingsXML(towingEvents);
 						
-						// Preapre the header of the response message
+						// Prepare the header of the response message
 						DateTime dt2 = new DateTime();
 						DateTimeFormatter fmt = ISODateTimeFormat.dateTime();
 						String timestamp = fmt.print(dt2);
@@ -416,6 +435,9 @@ public class RequestListener extends TowContextListenerBase {
 						responseMessage = responseMessage.replace("xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\"", "");
 
 						try {
+							
+							// Send the message to the output queue
+							
 							MSender send = new MSender(ibmoutqueue, host, qm, channel,  port,  user,  pass);
 							send.mqPut(responseMessage);
 							log.debug("Request Response Sent");
@@ -437,7 +459,6 @@ public class RequestListener extends TowContextListenerBase {
 					} catch (Exception e) {
 						log.error("Unhandled Exception "+e.getMessage());
 						e.printStackTrace();
-						//						recv.disconnect();
 						continueOK = false;
 					}
 				} while (continueOK && !stopThread);
