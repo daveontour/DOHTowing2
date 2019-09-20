@@ -24,7 +24,7 @@ public class AMSServices {
 	private String wsurl;
 
 	
-	// Hard coded for DOHA
+	// Hard coded for DOHA. See Line 50
 	private String getFlightTemplate = "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:ams6=\"http://www.sita.aero/ams6-xml-api-webservice\" xmlns:wor=\"http://schemas.datacontract.org/2004/07/WorkBridge.Modules.AMS.AMSIntegrationAPI.Mod.Intf.DataTypes\">\r\n" + 
 			"   <soapenv:Header/>\r\n" + 
 			"   <soapenv:Body>\r\n" + 

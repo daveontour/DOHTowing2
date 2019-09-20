@@ -91,7 +91,7 @@ public class TowContextListenerBase implements ServletContextListener {
 	protected boolean syncOnStartUp;
 
 	protected Properties props;
-	private int httpRequestTimeout;
+	protected int httpRequestTimeout;
 
 	@Override
 	public void contextInitialized(ServletContextEvent servletContextEvent) {
@@ -349,6 +349,10 @@ public class TowContextListenerBase implements ServletContextListener {
 
 	}
 
+	/*
+	 * Send a message on the specified QM and Q. 
+	 * Connects/Disconnects for every send
+	 */
 	public synchronized boolean sendMessage(String message, String queueName) throws MQException {
 
 		MQEnvironment.hostname = host;
@@ -472,6 +476,14 @@ public class TowContextListenerBase implements ServletContextListener {
 	}
 
 
+	/*
+	 * Get a message from the specified QManager and Queue. Connecting/Disconnecting from 
+	 * the QM each time. Return null on QM connection error, throws the MQException on message
+	 * timeout.
+	 * 
+	 * If there is a QM connection problem, then it waits 5000ms before returning to limit
+	 * the frequency of retries
+	 */
 	public synchronized String getRequestMessage(String queueName) throws MQException {
 
 		MQEnvironment.hostname = host;
@@ -612,5 +624,4 @@ public class TowContextListenerBase implements ServletContextListener {
 
 		return null;
 	}
-
 }

@@ -1,5 +1,5 @@
 # Log level (options: DEBUG, INFO, WARN, ERROR, OFF )
-log.level=TRACE
+log.level=ERROR
 
 #
 # AMS Connection Parameters
