@@ -389,6 +389,8 @@ public class TowContextListenerBase implements ServletContextListener {
 			
 		} while (!connect && (connectTries < retriesIBMMQ || retriesIBMMQ == 0));
 		
+		log.debug("Output Queue Opened "+ queueName);
+		
 		if (!connect) {
 			return false;
 		}

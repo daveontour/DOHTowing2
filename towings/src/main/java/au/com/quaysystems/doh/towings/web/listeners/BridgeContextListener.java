@@ -236,7 +236,7 @@ public class BridgeContextListener extends TowContextListenerBase {
 				String regoElement = "<Registration>"+rego+"</Registration>";
 
 				// Substitute it into the end of the message
-				notificationMessage = notificationMessage.replaceAll("</FlightIdentifier>", regoElement+"\n</FlightIdentifier>");						
+				notificationMessage = notificationMessage.replaceAll("</FlightIdentifier>", regoElement+"\r\n</FlightIdentifier>");						
 
 				log.trace("Message Processed");						
 				log.debug(notificationMessage);

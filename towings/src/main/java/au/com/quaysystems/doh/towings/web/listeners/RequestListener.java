@@ -144,7 +144,7 @@ public class RequestListener extends TowContextListenerBase {
 				String rego = "<Registration>"+getRegistration(tow)+"</Registration>";
 
 				// Hack it at the the end of the XML 
-				tow = tow.replaceAll("</FlightIdentifier>", rego+"\n</FlightIdentifier>");
+				tow = tow.replaceAll("</FlightIdentifier>", rego+"\r\n</FlightIdentifier>");
 
 				// Add it to the existing 
 				towings = towings.concat(tow).concat("\r\n");				
@@ -261,11 +261,15 @@ public class RequestListener extends TowContextListenerBase {
 				} catch (Exception e1) {
 					log.error("Unable to retrieve towing events");
 					e1.printStackTrace();
-					towingEvents = null;
+					towingEvents = "ERROR";
 				} 
 
 				// Add the aircraft registration to the tow events that were returned
-				String towingsXML = getTowingsXML(towingEvents);
+				
+				String towingsXML = "<!-- Unable to retrieve towing data from the AMS Rest Server -->";
+				if (towingEvents != "ERROR") {
+					towingsXML = getTowingsXML(towingEvents);
+				}
 
 				// Prepare the header of the response message
 				DateTime dt2 = new DateTime();

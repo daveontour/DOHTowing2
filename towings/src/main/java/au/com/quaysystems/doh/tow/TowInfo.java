@@ -32,7 +32,7 @@ public class TowInfo extends HttpServlet {
 
 			try {
 				Properties props = getProperties();
-				result = "Towing Interface Properties: "+props.toString();
+				result = "Towing Interface **** Version 3.7 **** Properties: "+props.toString();
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
