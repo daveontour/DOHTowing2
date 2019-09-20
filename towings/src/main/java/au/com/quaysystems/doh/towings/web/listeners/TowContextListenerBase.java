@@ -381,17 +381,18 @@ public class TowContextListenerBase implements ServletContextListener {
 					// TODO Auto-generated catch block
 					e.printStackTrace();
 				}
+			} catch (Exception ex) {
+				log.error("Problem connecting to Output qmgr or q");
+				log.error(ex.getMessage());
+				ex.printStackTrace();
 			}
-		} while (!connect && (connectTries < retriesIBMMQ || retriesIBMMQ == -1));
+			
+		} while (!connect && (connectTries < retriesIBMMQ || retriesIBMMQ == 0));
 		
 		if (!connect) {
 			return false;
 		}
-		
-		
-//		// Define a MQ message buffer
-//		MQMessage mBuf = new MQMessage();
-//
+
 		// create message options
 		MQPutMessageOptions pmo = new MQPutMessageOptions();
 		pmo.options = MQConstants.MQPMO_ASYNC_RESPONSE;
@@ -487,7 +488,7 @@ public class TowContextListenerBase implements ServletContextListener {
 
 			if ( ex.completionCode == 2 && ex.reasonCode == 2538) {
 
-				log.debug("Unable to Connect to host " + queueName);
+				log.error("Unable to Connect to host " + queueName);
 				try {
 					Thread.sleep(5000);
 				} catch (InterruptedException e) {
@@ -497,6 +498,11 @@ public class TowContextListenerBase implements ServletContextListener {
 
 				return null;
 			}
+		} catch (Exception ex) {
+			log.error("Problem connecting to Output qmgr or q");
+			log.error(ex.getMessage());
+			ex.printStackTrace();
+			return null;
 		}
 
 		MQMessage theMessage = new MQMessage();

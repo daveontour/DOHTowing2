@@ -125,6 +125,10 @@ public class BridgeContextListener extends TowContextListenerBase {
 						log.error(ex.getMessage());
 					}
 					continue;
+				} catch (Exception ex) {
+					log.error("Unhandled Error Getting Message");
+					log.error(ex.getMessage());
+					continue;
 				}
 
 				if (message == null) {

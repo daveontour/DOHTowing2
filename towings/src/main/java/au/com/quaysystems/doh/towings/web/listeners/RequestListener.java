@@ -168,9 +168,13 @@ public class RequestListener extends TowContextListenerBase {
 					if ( ex.completionCode == 2 && ex.reasonCode == MQConstants.MQRC_NO_MSG_AVAILABLE) {
 						continue;
 					} else {
-						log.error("Unhandled Error Getting Message");
+						log.error("Unhandled  MQ Error Getting Message");
 						log.error(ex.getMessage());
 					}
+					continue;
+				} catch (Exception ex) {
+					log.error("Unhandled Error Getting Message");
+					log.error(ex.getMessage());
 					continue;
 				}
 
@@ -277,7 +281,7 @@ public class RequestListener extends TowContextListenerBase {
 				try {
 
 					// Send the message to the output queue
-					
+
 					boolean sent = sendMessage(responseMessage, ibmoutqueue);
 					if (!sent) {
 						log.error("Request Response Send Error");	
