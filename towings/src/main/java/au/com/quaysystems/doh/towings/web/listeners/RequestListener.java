@@ -37,7 +37,7 @@ import ch.qos.logback.classic.Logger;
  * Two Purposes:
  * 
  * 1. Listen for incoming request on the input queue for Tows within a specificed period
- * 2. Schedule the periodic resync which by defualt is daily
+ * 2. Schedule the periodic resync which by default is daily
  * 
  * Also does the sync on startup.
  * 
@@ -46,7 +46,7 @@ import ch.qos.logback.classic.Logger;
  * information in the towing is extracted and used with the AMS Web Services to get the flight for each  of 
  * the tow records. 
  * 
- * Uses method in the base class to extract flight descriptor for towing message and get registration for AMS
+ * Uses method in the base class to extract flight descriptor for towing message and get registration from AMS
  * 
  * Incoming messages may have a correlationID, which is returned in the response
  * Incoming messages are not parsed or checked for validity
@@ -128,7 +128,9 @@ public class RequestListener extends TowContextListenerBase {
 		log.info("<=== Request Listner Loop Started");
 	}
 
-	public String getTowingsXML(String input) {
+	public String getTowingsXML(String inputXML) {
+		
+		// This extracts the individual towing events from the inputXML and adds in the Registration for each of the aircraft  
 
 		// The query to be used by the FLWOR query
 		String queryBody = 
@@ -139,8 +141,10 @@ public class RequestListener extends TowContextListenerBase {
 		Context context = new Context();
 		try  {
 			QueryProcessor proc = new QueryProcessor(queryBody, context);
-			proc.bind("var1", input);
+			proc.bind("var1", inputXML);
 			Iter iter = proc.iter();
+			
+			// Loop around each of the towing events and add in the registration of the aircraft.
 			for (Item item; (item = iter.next()) != null;) {
 				String tow = item.serialize().toString();
 
@@ -256,6 +260,7 @@ public class RequestListener extends TowContextListenerBase {
 					correlationID = "-";
 				}
 
+				// So at this point we now have the requested "to" and "from" times (or the defaults) and the corellation  ID of the request 
 
 				log.debug(correlationID+"  "+from+" "+to);
 

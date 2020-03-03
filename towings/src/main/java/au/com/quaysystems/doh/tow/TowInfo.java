@@ -1,5 +1,8 @@
 package au.com.quaysystems.doh.tow;
 
+import java.io.File;
+import java.io.FileInputStream;
+
 /*
  * 
  * Production Release RC 3.7
@@ -55,28 +58,60 @@ public class TowInfo extends HttpServlet {
 		doGet(request, response);
 	}
 	
+//	public Properties getProperties() throws IOException {
+//		 
+//		InputStream inputStream = null;
+//		Properties props = new Properties();
+//
+//		try {
+//			String propFileName = "application.properties";
+// 
+//			inputStream = getClass().getClassLoader().getResourceAsStream(propFileName);
+// 
+//			if (inputStream != null) {
+//				props.load(inputStream);
+//			} else {
+//				throw new FileNotFoundException("property file '" + propFileName + "' not found in the classpath");
+//			}
+// 
+// 		} catch (Exception e) {
+//			System.out.println("Exception: " + e);
+//		} finally {
+//			inputStream.close();
+//		}
+//		return props;
+//	}
+	
 	public Properties getProperties() throws IOException {
-		 
+
+
 		InputStream inputStream = null;
 		Properties props = new Properties();
 
 		try {
 			String propFileName = "application.properties";
- 
+
 			inputStream = getClass().getClassLoader().getResourceAsStream(propFileName);
- 
+
 			if (inputStream != null) {
 				props.load(inputStream);
 			} else {
-				throw new FileNotFoundException("property file '" + propFileName + "' not found in the classpath");
+				try {
+					File initialFile = new File("C:/Users/dave_/Desktop/application.properties");
+					inputStream = new FileInputStream(initialFile);
+					props.load(inputStream);
+				} catch (Exception e) {
+					throw new FileNotFoundException("property file '" + propFileName + "' not found in the classpath");
+				}
 			}
- 
- 		} catch (Exception e) {
+
+		} catch (Exception e) {
 			System.out.println("Exception: " + e);
 		} finally {
 			inputStream.close();
 		}
 		return props;
+
 	}
 
 }

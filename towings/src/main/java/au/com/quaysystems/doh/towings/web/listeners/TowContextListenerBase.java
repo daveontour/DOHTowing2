@@ -205,6 +205,7 @@ public class TowContextListenerBase implements ServletContextListener {
 
 	public String getRegistration(String notif) throws JDOMException, IOException {
 
+		// Takes the XML of towing event, extracts the flight and then tries to get the registration for that flight
 		Document xmlDoc = getDocumentFromString(notif);
 		Element root = xmlDoc.getRootElement();
 
@@ -227,6 +228,7 @@ public class TowContextListenerBase implements ServletContextListener {
 
 
 		if (flightID == null) {
+			//returns 'nil'
 			return reg;
 		}
 
@@ -235,6 +237,7 @@ public class TowContextListenerBase implements ServletContextListener {
 			String flt = ams.getFlight(flightID);
 
 			if (flt == null) {
+				//returns 'nil'
 				return reg;
 			} 
 
@@ -354,6 +357,15 @@ public class TowContextListenerBase implements ServletContextListener {
 	 * Connects/Disconnects for every send
 	 */
 	public synchronized boolean sendMessage(String message, String queueName) throws MQException {
+		
+		if (message == null || message.length() == 0) {
+			log.error("A message to be sent to "+queueName+" is null or has zero length");
+			log.error("Empty Message not sent");
+			return false;
+		}
+		
+		log.trace("Sending following message to " + queueName);
+		log.trace(">>>>>>>>>>>>>>\n" + message +"\n<<<<<<<<<<<<<<\n");
 
 		MQEnvironment.hostname = host;
 		MQEnvironment.channel = channel;
@@ -412,9 +424,14 @@ public class TowContextListenerBase implements ServletContextListener {
         mqMessage.format = MQConstants.MQFMT_STRING;
 		
 		try {
+			log.trace("About to write string to message >>>>");
 	        mqMessage.writeString(message);
-		} catch (IOException e1) {
+	        log.trace("<<<<<< String writen to message");
+		} catch (Exception e1) {
 			e1.printStackTrace();
+			log.error("Error Writing String to  Message for "+queueName);
+			log.error(e1.getMessage());
+			log.error("Cleaning Up After String Write Error");
 
 			// Close the queue and disconnect the queue manager
 			try {
@@ -432,11 +449,15 @@ public class TowContextListenerBase implements ServletContextListener {
 			}
 			log.debug("Output Queue Manager Disconnected " + queueName);
 			
+			log.error("Finished Cleaning Up After Message Creation Error");
+			
 			return false;
 		}
 		
 		try {
+			log.trace("About to put message to queue "+queueName+" >>>>");
 			queue.put(mqMessage, pmo); 
+			log.trace("<<<<<< Put message to queue "+queueName+" >>>>");
 			try {
 				queue.close();
 			} catch (Exception e) {
@@ -455,8 +476,12 @@ public class TowContextListenerBase implements ServletContextListener {
 			return true;
 			// put the message out on the queue
 		} catch (Exception e) {
-			// TODO Auto-generated catch block
+
+			log.error("Error Sending Message to "+queueName);
+			log.error(e.getMessage());
+			log.error("Cleaning Up After Message Send Error");
 			e.printStackTrace();
+			
 			try {
 				queue.close();
 			} catch (Exception e1) {
@@ -471,6 +496,9 @@ public class TowContextListenerBase implements ServletContextListener {
 				log.error(e1.getMessage());
 			}
 			log.debug("Output Queue Manager Disconnected " + queueName);
+			
+			log.error("Finished Cleaning Up After Message Send Error");
+			
 			return false;
 		}
 	}

@@ -75,6 +75,10 @@ public class BridgeContextListener extends TowContextListenerBase {
 					"for $x in fn:parse-xml($var1)//Notification\r\n" + 
 					"return $x";
 
+	
+	// If there is an update to the registration of a flight, then a updated towing notification message has to be sent out
+	// When a flight update notification is received a 'dummy' towing nofitication for that flight is created and placed on the 
+	// input queue so that it handled like a towing notification for that flight was received. 
 	private String notificationDummy = "<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">\r\n" + 
 			" <soap:Header></soap:Header>\r\n" + 
 			" <soap:Body>\r\n" + 
@@ -153,6 +157,9 @@ public class BridgeContextListener extends TowContextListenerBase {
 					handleFlightUpdate(message);
 					continue;
 				}
+				if (message.contains("<MovementUpdatedNotification>")) {
+					continue;
+				}
 
 				/*
 				 * So now we're only interested in the Tow Events
@@ -163,6 +170,7 @@ public class BridgeContextListener extends TowContextListenerBase {
 
 					// Exit the loop if it's not a message we are interested in
 					log.debug("Unhandled message received - ignoring");
+					log.trace(message);
 					continue;
 				}
 
@@ -170,12 +178,18 @@ public class BridgeContextListener extends TowContextListenerBase {
 				String eventType = null;
 				if (message.contains("TowingCreatedNotification")) {
 					eventType = "TOW_MOVEMENT_CREATION";
+					log.trace("Tow Creation Message Received");
+					log.trace(message);
 				}
 				if (message.contains("TowingUpdatedNotification")) {
 					eventType = "TOW_MOVEMENT_UPDATE";
+					log.trace("Tow Update Message Received");
+					log.trace(message);
 				}
 				if (message.contains("TowingDeletedNotification")) {
 					eventType = "TOW_MOVEMENT_DELETION";
+					log.trace("Tow Delete Message Received");
+					log.trace(message);
 				}
 
 				// Clean up the message a bit for easier handling

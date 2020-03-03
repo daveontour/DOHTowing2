@@ -70,9 +70,11 @@ public class AMSServices {
 	
 	public String getFlight( String id) {
 
-	//	String id = "6E1713@2019-08-01T09:00A";
-		
+		// Gets the data from the flightID to  create a GetFlights message
+	    //	String id = "6E1713@2019-08-01T09:00A";	
 		// id is in the form of the descriptor on the Towing messages
+		
+	
 		
 		String fltNum = id.substring(2, id.indexOf("@"));
 		String airline  = id.substring(0,2);
@@ -110,13 +112,13 @@ public class AMSServices {
 				return EntityUtils.toString(response.getEntity());
 			} else {
 				log.error("WebService GetFlight Error. HTTP Status Code: " +statusCode);
-				return "<Status>Failed</Status>";
+				return null;
 			}
 		} catch (Exception e) {
 			log.error("AMS WebService ERROR");
 			log.error(e.getMessage());
 			e.printStackTrace();
-			return "<Status>Failed</Status>";
+			return null;
 		} 		
 	}
 }
